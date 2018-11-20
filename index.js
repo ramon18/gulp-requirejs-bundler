@@ -1,7 +1,7 @@
 var es = require('event-stream'),
     merge = require('deeply'),
     rjs = require('gulp-requirejs'),
-    File = require('gulp-util').File,
+    Vinyl = require('vinyl'),
     Q = require('q'),
     _ = require('underscore');
 
@@ -45,7 +45,7 @@ module.exports = function(options) {
                 bundleConfigCode = '\nrequire.config('
                     + JSON.stringify({ bundles: bundleConfig }, true, 2)
                     + ');\n';
-            return new File({
+            return new Vinyl({
                 path: primaryOutput.file.path,
                 contents: new Buffer(primaryOutput.file.contents.toString() + bundleConfigCode)
             });

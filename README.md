@@ -2,6 +2,8 @@
 
 A require-bundler plugin for [gulp](https://github.com/wearefractal/gulp)
 
+**This FORK improves the original package from Steve Sanderson with compatible to gulp 4**
+
 ## Usage
 
 First, install `gulp-requirejs-bundler` as a development dependency:
