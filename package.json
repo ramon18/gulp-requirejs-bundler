@@ -19,8 +19,12 @@
   "dependencies": {
     "deeply": "^2.0.3",
     "event-stream": "^4.0.1",
+    "gulp": "^4.0.0",
     "gulp-requirejs": "^1.2.0",
     "q": "^1.0.1",
     "underscore": "^1.6.0"
+  },
+  "devDependencies": {
+    "chalk": "^2.4.1"
   }
 }

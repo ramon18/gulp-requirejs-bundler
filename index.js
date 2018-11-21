@@ -3,7 +3,9 @@ var es = require('event-stream'),
     rjs = require('gulp-requirejs'),
     Vinyl = require('vinyl'),
     Q = require('q'),
-    _ = require('underscore');
+    _ = require('underscore'),
+    chalk = require('chalk'),
+    log = console.log;    
 
 module.exports = function(options) {
 
@@ -11,16 +13,19 @@ module.exports = function(options) {
     // so that they can be excluded from the primary output
     var allBundledModules = _.flatten(_.values(options.bundles));
 
+    var bundles = options.bundles || {};
+    delete options.bundles;
+
     // First run r.js to produce its default (non-bundle-aware) output. In the process,
     // we capture the list of modules it wrote.
     var primaryPromise = getRjsOutput(merge({}, options, {
         excludeShallow: allBundledModules
-    }));
+    }), options.name, false);
 
     // Next, take the above list of modules, and for each configured bundle, write out
     // the bundle's .js file, excluding any modules included in the primary output. In
     // the process, capture the list of modules included in each bundle file.
-    var bundlePromises = _.map(options.bundles || {}, function(bundleModules, bundleName) {
+    var bundlePromises = _.map(bundles, function(bundleModules, bundleName) {
             return primaryPromise.then(function(primaryOutput) {
                 return getRjsOutput(merge({}, options, {
                     out: bundleName + ".js",
@@ -29,7 +34,7 @@ module.exports = function(options) {
                         return bundleModules.indexOf(x) === -1;
                     }),
                     insertRequire: null
-                }), bundleName);
+                }), bundleName, true);
             });
         });
 
@@ -49,6 +54,10 @@ module.exports = function(options) {
                 path: primaryOutput.file.path,
                 contents: new Buffer(primaryOutput.file.contents.toString() + bundleConfigCode)
             });
+        }).catch(function(err) {
+            var stream = es.pause();
+            stream.emit('error', err);
+            return stream;
         });
 
     // Convert the N+1 promises (N bundle files, 1 final primary file) into a single stream for gulp to await
@@ -71,7 +80,9 @@ function streamToPromise(stream) {
     // Of course, this relies on the stream producing only one output. That is the case
     // for all uses in this file (wrapping rjs output, which is always one file).
     var deferred = Q.defer();
-    stream.pipe(es.through(function(item) {
+    stream.on('error', function(error){
+        deferred.reject(error);
+    }).pipe(es.through(function(item) {
         deferred.resolve(item);
     }));
     return deferred.promise;
@@ -86,12 +97,25 @@ function pluckPromiseArray(promiseArray, propertyName) {
 }
 
 function getRjsOutput(options, itemName) {
+
+    if (options.verbose) {
+        log(chalk.yellow('Bundle ') + chalk.green.underline(itemName) + chalk.yellow(" has started, modules included:"))
+    }
+
     // Capture the list of written modules by adding to an array on each onBuildWrite callback
     var modulesList = [],
         patchedOptions = merge({}, options, {
             onBuildWrite: function(moduleName, path, contents) {
+                if (options.verbose) {
+                    log(chalk.green(" > ") + moduleName);
+                }
                 modulesList.push(moduleName);
                 return contents;
+            },
+            onModuleBundleComplete: function(data) {
+                if (options.verbose) {
+                    log(chalk.yellow('Ended'))
+                }
             }
         }),
         rjsOutputPromise = streamToPromise(rjs(patchedOptions));
