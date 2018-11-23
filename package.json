@@ -1,6 +1,6 @@
 {
   "name": "gulp-requirejs-bundler",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gulp plugin: wraps gulp-requirejs, adds ability to emit bundle files and bundle config",
   "keywords": [
     "gulpplugin, requirejs, amd"
@@ -22,9 +22,7 @@
     "gulp": "^4.0.0",
     "gulp-requirejs": "^1.2.0",
     "q": "^1.0.1",
-    "underscore": "^1.6.0"
-  },
-  "devDependencies": {
+    "underscore": "^1.6.0",
     "chalk": "^2.4.1"
   }
 }

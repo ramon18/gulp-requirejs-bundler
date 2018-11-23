@@ -5,22 +5,43 @@ var es = require('event-stream'),
     Q = require('q'),
     _ = require('underscore'),
     chalk = require('chalk'),
-    log = console.log;    
+    log = console.log;
 
 module.exports = function(options) {
 
     // Get a list of all the modules that will be included in the bundles,
     // so that they can be excluded from the primary output
     var allBundledModules = _.flatten(_.values(options.bundles));
+    
+    // Capture (optional) bundles
+    var bundles = cut(options, 'bundles') || {};
 
-    var bundles = options.bundles || {};
-    delete options.bundles;
+    // Capture (optional) extra fields to inject on final require.config({ ... })
+    var requireConfig = cut(options, 'requireConfig') || {};
+    
+    // Capture (optional) prefix/suffix applied when naming bundles (including main)
+    var bundleSuffix = cut(options, 'bundleSuffix') || "";
+    var bundlePrefix = cut(options, 'bundlePrefix') || "";
 
+    // Helper function to generate bundle name
+    function makeBundleName(name) {
+        if (!name) return name;
+        
+        var m = /\.js$/i.exec(name);
+        if (m) {
+            name = name.substring(0, m.index);
+        }
+        return bundlePrefix + name + bundleSuffix + ".js";
+    }
+
+    // Fix main bundle output name
+    options.out = makeBundleName(options.out);
+    
     // First run r.js to produce its default (non-bundle-aware) output. In the process,
     // we capture the list of modules it wrote.
     var primaryPromise = getRjsOutput(merge({}, options, {
         excludeShallow: allBundledModules
-    }), options.name, false);
+    }), options.name);
 
     // Next, take the above list of modules, and for each configured bundle, write out
     // the bundle's .js file, excluding any modules included in the primary output. In
@@ -28,13 +49,13 @@ module.exports = function(options) {
     var bundlePromises = _.map(bundles, function(bundleModules, bundleName) {
             return primaryPromise.then(function(primaryOutput) {
                 return getRjsOutput(merge({}, options, {
-                    out: bundleName + ".js",
+                    out: makeBundleName(bundleName),
                     include: bundleModules,
                     excludeShallow: primaryOutput.modules.concat(allBundledModules).filter(function (x) {
                         return bundleModules.indexOf(x) === -1;
                     }),
                     insertRequire: null
-                }), bundleName, true);
+                }), bundleName);
             });
         });
 
@@ -45,10 +66,10 @@ module.exports = function(options) {
             var primaryOutput = allOutputs[0],
                 bundleOutputs = allOutputs.slice(1),
                 bundleConfig = _.object(bundleOutputs.map(function(bundleOutput) {
-                    return [bundleOutput.itemName, bundleOutput.modules]
+                    return [bundlePrefix + bundleOutput.itemName + bundleSuffix, bundleOutput.modules]
                 })),
                 bundleConfigCode = '\nrequire.config('
-                    + JSON.stringify({ bundles: bundleConfig }, true, 2)
+                    + JSON.stringify(merge(requireConfig, { bundles: bundleConfig }), true, 2)
                     + ');\n';
             return new Vinyl({
                 path: primaryOutput.file.path,
@@ -76,6 +97,12 @@ function promiseToStream(promise) {
     return stream;
 }
 
+function cut(o, prop) {
+    var result = o[prop];
+    delete o[prop];
+    return result;
+}
+
 function streamToPromise(stream) {
     // Of course, this relies on the stream producing only one output. That is the case
     // for all uses in this file (wrapping rjs output, which is always one file).
@@ -98,29 +125,24 @@ function pluckPromiseArray(promiseArray, propertyName) {
 
 function getRjsOutput(options, itemName) {
 
-    if (options.verbose) {
-        log(chalk.yellow('Bundle ') + chalk.green.underline(itemName) + chalk.yellow(" has started, modules included:"))
-    }
-
     // Capture the list of written modules by adding to an array on each onBuildWrite callback
     var modulesList = [],
         patchedOptions = merge({}, options, {
             onBuildWrite: function(moduleName, path, contents) {
-                if (options.verbose) {
-                    log(chalk.green(" > ") + moduleName);
-                }
                 modulesList.push(moduleName);
                 return contents;
-            },
-            onModuleBundleComplete: function(data) {
-                if (options.verbose) {
-                    log(chalk.yellow('Ended'))
-                }
             }
-        }),
-        rjsOutputPromise = streamToPromise(rjs(patchedOptions));
+        });
 
-    return rjsOutputPromise.then(function(file) {
+    return streamToPromise(rjs(patchedOptions)).then(function(file) {
+
+        if (options.verbose) {
+            log(chalk.yellow('Generated bundle ') + chalk.green.underline(itemName) + chalk.yellow(", modules included:"))
+            for (var i = 0; i < modulesList.length; i++) {
+                log(chalk.green(" > ") + modulesList[i]);           
+            }
+        }
+    
         return { itemName: itemName, file: file, modules: modulesList };
     });
 }
